@@ -88,23 +88,44 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Connect to DB and Start Server
-const startServer = async () => {
-  try {
-    await connectDB();
-    await seedData();
+let dbInitPromise: Promise<void> | null = null;
 
-    app.listen(PORT, () => {
-      console.log(`=======================================================`);
-      console.log(`🚀 PrithviGrid Full-Stack Backend running on PORT ${PORT}`);
-      console.log(`📡 REST API Base: http://localhost:${PORT}/api`);
-      console.log(`🛡️ Default Admin: admin@prithvigrid.com | Admin@12345`);
-      console.log(`=======================================================`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+const ensureDB = async () => {
+  if (!dbInitPromise) {
+    dbInitPromise = (async () => {
+      await connectDB();
+      await seedData();
+    })();
   }
+  return dbInitPromise;
 };
 
-startServer();
+// Middleware to ensure DB and initial seeds are ready for serverless invocations
+app.use(async (_req: Request, _res: Response, next: NextFunction) => {
+  try {
+    await ensureDB();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Start listening when running standalone/locally
+if (!process.env.VERCEL) {
+  ensureDB()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`=======================================================`);
+        console.log(`🚀 PrithviGrid Full-Stack Backend running on PORT ${PORT}`);
+        console.log(`📡 REST API Base: http://localhost:${PORT}/api`);
+        console.log(`🛡️ Default Admin: admin@prithvigrid.com | Admin@12345`);
+        console.log(`=======================================================`);
+      });
+    })
+    .catch((error) => {
+      console.error('Failed to start server:', error);
+    });
+}
+
+export default app;
 
